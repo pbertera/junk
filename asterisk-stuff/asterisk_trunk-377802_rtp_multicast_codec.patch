@@ -1,0 +1,33 @@
+Index: channels/chan_multicast_rtp.c
+===================================================================
+--- channels/chan_multicast_rtp.c	(revision 377802)
++++ channels/chan_multicast_rtp.c	(working copy)
+@@ -83,7 +83,7 @@
+ static int multicast_rtp_write(struct ast_channel *ast, struct ast_frame *f)
+ {
+ 	struct ast_rtp_instance *instance = ast_channel_tech_pvt(ast);
+-
++	
+ 	return ast_rtp_instance_write(instance, f);
+ }
+ 
+@@ -118,8 +118,17 @@
+ 	struct ast_sockaddr destination_address;
+ 	struct ast_channel *chan;
+ 	struct ast_format fmt;
+-	ast_best_codec(cap, &fmt);
+-
++	const char *codec;
++ 	
++	ast_format_clear(&fmt);
++	if (requestor && (codec = pbx_builtin_getvar_helper((struct ast_channel *)requestor, "MULTICAST_RTP_CODEC"))) {
++		ast_getformatbyname(codec, &fmt);
++		ast_log(LOG_NOTICE, "MulticastRTP set codec to %s\n", codec);
++	}
++	if (!fmt.id) {
++		ast_best_codec(cap, &fmt);
++		ast_log(LOG_NOTICE, "Using codec '%s' for multicast RTP\n", ast_getformatname(&fmt));
++	}
+ 	ast_sockaddr_setnull(&control_address);
+ 
+ 	/* If no type was given we can't do anything */
