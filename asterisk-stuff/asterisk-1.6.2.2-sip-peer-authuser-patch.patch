@@ -1,0 +1,61 @@
+Index: channels/chan_sip.c
+===================================================================
+--- channels/chan_sip.c	(revision 244766)
++++ channels/chan_sip.c	(working copy)
+@@ -1825,6 +1825,7 @@
+ 		AST_STRING_FIELD(context);		/*!< Default context for incoming calls */
+ 		AST_STRING_FIELD(subscribecontext);	/*!< Default context for subscriptions */
+ 		AST_STRING_FIELD(username);		/*!< Temporary username until registration */ 
++		AST_STRING_FIELD(authuser);		/*!< Username used during inbound authentication */ 
+ 		AST_STRING_FIELD(accountcode);		/*!< Account code */
+ 		AST_STRING_FIELD(tohost);		/*!< If not dynamic, IP address */
+ 		AST_STRING_FIELD(regexten); 		/*!< Extension to register (if regcontext is used) */
+@@ -13011,7 +13012,9 @@
+ 			ast_copy_flags(&p->flags[0], &peer->flags[0], SIP_NAT);
+ 			if (ast_test_flag(&p->flags[1], SIP_PAGE2_REGISTERTRYING))
+ 				transmit_response(p, "100 Trying", req);
+-			if (!(res = check_auth(p, req, peer->name, peer->secret, peer->md5secret, SIP_REGISTER, uri, XMIT_UNRELIABLE, req->ignore))) {
++			if (strcmp(peer->authuser, peer->name))
++				ast_log(LOG_NOTICE, "Trying athenticate peer '%s' using authuser: '%s'\n", peer->name, peer->authuser);
++			if (!(res = check_auth(p, req, peer->authuser, peer->secret, peer->md5secret, SIP_REGISTER, uri, XMIT_UNRELIABLE, req->ignore))) {
+ 				if (sip_cancel_destroy(p))
+ 					ast_log(LOG_WARNING, "Unable to cancel SIP destruction.  Expect bad things.\n");
+ 
+@@ -14006,7 +14009,7 @@
+ 		ast_string_field_set(p, peersecret, NULL);
+ 		ast_string_field_set(p, peermd5secret, NULL);
+ 	}
+-	if (!(res = check_auth(p, req, peer->name, p->peersecret, p->peermd5secret, sipmethod, uri2, reliable, req->ignore))) {
++	if (!(res = check_auth(p, req, peer->authuser, p->peersecret, p->peermd5secret, sipmethod, uri2, reliable, req->ignore))) {
+ 		ast_copy_flags(&p->flags[0], &peer->flags[0], SIP_FLAGS_TO_COPY);
+ 		ast_copy_flags(&p->flags[1], &peer->flags[1], SIP_PAGE2_FLAGS_TO_COPY);
+ 		/* If we have a call limit, set flag */
+@@ -15386,6 +15389,7 @@
+ 		}
+ 		ast_cli(fd, "  Secret       : %s\n", ast_strlen_zero(peer->secret)?"<Not set>":"<Set>");
+ 		ast_cli(fd, "  MD5Secret    : %s\n", ast_strlen_zero(peer->md5secret)?"<Not set>":"<Set>");
++		ast_cli(fd, "  Auth User    : %s\n", peer->authuser);
+ 		ast_cli(fd, "  Remote Secret: %s\n", ast_strlen_zero(peer->remotesecret)?"<Not set>":"<Set>");
+ 		for (auth = peer->auth; auth; auth = auth->next) {
+ 			ast_cli(fd, "  Realm-auth   : Realm %-15.15s User %-10.20s ", auth->realm, auth->username);
+@@ -23706,8 +23710,10 @@
+ 		set_peer_defaults(peer);	/* Set peer defaults */
+ 		peer->type = 0;
+ 	}
+-	if (!found && name)
++	if (!found && name) {
+ 		ast_copy_string(peer->name, name, sizeof(peer->name));
++		ast_string_field_set(peer, authuser, name);	/* Set default authuser == peername*/
++	}
+ 
+ 	/* If we have channel variables, remove them (reload) */
+ 	if (peer->chanvars) {
+@@ -23772,6 +23778,8 @@
+ 				ast_string_field_set(peer, secret, v->value);
+ 			} else if (!strcasecmp(v->name, "md5secret")) {
+ 				ast_string_field_set(peer, md5secret, v->value);
++			} else if (!strcasecmp(v->name, "authuser")) {
++				ast_string_field_set(peer, authuser, v->value);
+ 			} else if (!strcasecmp(v->name, "auth")) {
+ 				peer->auth = add_realm_authentication(peer->auth, v->value, v->lineno);
+ 			} else if (!strcasecmp(v->name, "callerid")) {
