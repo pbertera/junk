@@ -1,0 +1,557 @@
+diff -uP /tmp/findut/findutils/find/defs.h ./defs.h
+--- /tmp/findut/findutils/find/defs.h	2009-09-29 16:48:02.000000000 +0200
++++ ./defs.h	2009-09-29 16:55:49.000000000 +0200
+@@ -49,7 +49,9 @@
+ #include <stdint.h>		/* for uintmax_t */
+ #include <sys/stat.h> /* S_ISUID etc. */
+ 
+-
++#ifdef HAVE_LIBACL
++#include <sys/acl.h>
++#endif
+ 
+ #ifndef CHAR_BIT
+ # define CHAR_BIT 8
+@@ -150,6 +152,18 @@
+   mode_t val[2];
+ };
+ 
++#ifdef HAVE_LIBACL
++struct meta_acl
++{
++  acl_type_t a_type;
++  acl_tag_t a_tag;
++  id_t a_id;
++  bool a_id_any;
++  acl_perm_t a_perm;
++  bool a_perm_any;
++};
++#endif
++
+ /* dir_id is used to support loop detection in find.c
+  */
+ struct dir_id
+@@ -319,6 +333,9 @@
+     struct samefile_file_id samefileid; /* samefile */
+     mode_t type;		/* type */
+     struct format_val printf_vec; /* printf fprintf fprint ls fls print0 fprint0 print */
++#ifdef HAVE_LIBACL
++    struct meta_acl *meta_acl;         /* acl */
++#endif
+   } args;
+ 
+   /* The next predicate in the user input sequence,
+@@ -405,6 +422,9 @@
+ /* pred.c */
+ 
+ typedef boolean PREDICATEFUNCTION(const char *pathname, struct stat *stat_buf, struct predicate *pred_ptr);
++#ifdef HAVE_LIBACL
++PREDICATEFUNCTION pred_acl;
++#endif
+ PREDICATEFUNCTION pred_amin;
+ PREDICATEFUNCTION pred_and;
+ PREDICATEFUNCTION pred_anewer;
+Common subdirectories: /tmp/findut/findutils/find/.deps and ./.deps
+diff -uP /tmp/findut/findutils/find/find.1 ./find.1
+--- /tmp/findut/findutils/find/find.1	2009-09-29 16:48:02.000000000 +0200
++++ ./find.1	2009-09-29 16:57:57.000000000 +0200
+@@ -489,6 +489,11 @@
+ .IR n .
+ .P
+ 
++.IP "\-acl \fIpattern\fR"
++Extendend acls of file contains an acl entry. \fIattern\fR contain special
++.B *
++char matching all user, group or permissions. For example the pattern '-acl u:*:rx' match all files having an acl entry for any users and rx permissions.
++
+ .IP "\-amin \fIn\fR"
+ File was last accessed \fIn\fR minutes ago.
+ 
+Binary files /tmp/findut/findutils/find/libfindtools.a and ./libfindtools.a differ
+diff -uP /tmp/findut/findutils/find/parser.c ./parser.c
+--- /tmp/findut/findutils/find/parser.c	2009-09-29 16:48:02.000000000 +0200
++++ ./parser.c	2009-09-29 16:55:45.000000000 +0200
+@@ -45,6 +45,9 @@
+ 
+ #include <fcntl.h>
+ 
++#ifdef HAVE_LIBACL
++#include <sys/acl.h>
++#endif
+ 
+ /* The presence of unistd.h is assumed by gnulib these days, so we
+  * might as well assume it too.
+@@ -83,6 +86,9 @@
+ #endif
+ 
+ static boolean parse_accesscheck   PARAMS((const struct parser_table* entry, char **argv, int *arg_ptr));
++#ifdef HAVE_LIBACL
++static boolean parse_acl           PARAMS((const struct parser_table*, char *argv[], int *arg_ptr));
++#endif
+ static boolean parse_amin          PARAMS((const struct parser_table*, char *argv[], int *arg_ptr));
+ static boolean parse_and           PARAMS((const struct parser_table*, char *argv[], int *arg_ptr));
+ static boolean parse_anewer        PARAMS((const struct parser_table*, char *argv[], int *arg_ptr));
+@@ -244,6 +250,9 @@
+   PARSE_PUNCTUATION(")",                     closeparen), /* POSIX */
+   PARSE_PUNCTUATION(",",                     comma),	     /* GNU */
+   PARSE_PUNCTUATION("a",                     and), /* POSIX */
++#ifdef HAVE_LIBACL
++  PARSE_TEST       ("acl",                   acl),
++#endif
+   PARSE_TEST       ("amin",                  amin),	     /* GNU */
+   PARSE_PUNCTUATION("and",                   and),		/* GNU */
+   PARSE_TEST       ("anewer",                anewer),	     /* GNU */
+@@ -674,6 +683,30 @@
+    The predicate structure is updated with the new information. */
+ 
+ 
++#ifdef HAVE_LIBACL
++static boolean
++parse_acl (const struct parser_table* entry, char **argv, int *arg_ptr)
++{
++  struct predicate *our_pred;
++  const char *meta_acl_text;
++  
++  if (collect_arg(argv, arg_ptr, &meta_acl_text)) 
++    {
++      our_pred = insert_primary (entry, meta_acl_text);
++      our_pred->need_stat = our_pred->need_type = false;
++    }
++  else
++   {
++     return false;
++   }
++
++  if (parse_meta_acl (&meta_acl_text, &our_pred->args.meta_acl) == -1)
++    return false;
++
++  return true;
++}
++#endif
++
+ static boolean
+ parse_and (const struct parser_table* entry, char **argv, int *arg_ptr)
+ {
+@@ -1124,7 +1157,7 @@
+       -depth --help -maxdepth LEVELS -mindepth LEVELS -mount -noleaf\n\
+       --version -xdev -ignore_readdir_race -noignore_readdir_race\n"));
+   puts (_("\
+-tests (N can be +N or -N or N): -amin N -anewer FILE -atime N -cmin N\n\
++tests (N can be +N or -N or N): -acl ACL -amin N -anewer FILE -atime N -cmin N\n\
+       -cnewer FILE -ctime N -empty -false -fstype TYPE -gid N -group NAME\n\
+       -ilname PATTERN -iname PATTERN -inum N -iwholename PATTERN -iregex PATTERN\n\
+       -links N -lname PATTERN -mmin N -mtime N -name PATTERN -newer FILE"));
+diff -uP /tmp/findut/findutils/find/pred.c ./pred.c
+--- /tmp/findut/findutils/find/pred.c	2009-09-29 16:48:02.000000000 +0200
++++ ./pred.c	2009-09-29 16:55:45.000000000 +0200
+@@ -47,6 +47,9 @@
+ #include "error.h"
+ #include "verify.h"
+ 
++#ifdef HAVE_LIBACL
++# include <sys/acl.h>
++#endif
+ #if ENABLE_NLS
+ # include <libintl.h>
+ # define _(Text) gettext (Text)
+@@ -174,6 +177,9 @@
+ struct pred_assoc pred_table[] =
+ {
+   {pred_amin, "amin    "},
++#ifdef HAVE_LIBACL
++  {pred_acl, "acl     "},
++#endif
+   {pred_and, "and     "},
+   {pred_anewer, "anewer  "},
+   {pred_atime, "atime   "},
+@@ -310,6 +316,86 @@
+   abort ();
+ }
+ 
++#ifdef HAVE_LIBACL
++boolean
++pred_acl (const char *pathname, struct stat *stat_buf, struct predicate *pred_ptr)
++{
++  acl_t acl = NULL;
++  struct meta_acl *meta_acl_val = malloc(sizeof(struct meta_acl));
++  acl_entry_t ent;
++  int ret = 0, e_perm = 0, n = 0;
++  acl_permset_t e_permset;
++  acl_tag_t e_tag;
++  id_t *e_id;
++  
++  meta_acl_val = &pred_ptr->args.meta_acl;
++  acl = acl_get_file(pathname, meta_acl_val->a_type);
++  if (acl == NULL)
++    {
++      return false;
++    }
++
++  ret = acl_get_entry(acl, ACL_FIRST_ENTRY, &ent);
++
++  if (ret != 1)
++    {
++      acl_free(acl);
++      return false;
++    }
++  while (ret > 0)
++    {
++      e_perm = 0;
++      e_id = malloc(sizeof(e_id));
++      *e_id = 0;
++      acl_get_tag_type(ent, &e_tag);
++
++     if (e_tag == ACL_USER || e_tag == ACL_GROUP)
++     {
++       e_id = acl_get_qualifier(ent);
++
++       if (e_id == NULL)
++       {
++         ret = acl_get_entry(acl, ACL_NEXT_ENTRY, &ent);
++         continue;
++       }
++     }
++
++     if ( acl_get_permset(ent, &e_permset) != 0)
++       error (0, errno, "%s", pathname);
++
++     if (acl_get_perm(e_permset, ACL_READ))
++       e_perm |= ACL_READ;
++     if (acl_get_perm(e_permset, ACL_WRITE))
++       e_perm |= ACL_WRITE;
++     if (acl_get_perm(e_permset, ACL_EXECUTE))
++       e_perm |= ACL_EXECUTE;
++
++     if ((meta_acl_val->a_id_any == true) ||
++         (meta_acl_val->a_tag == ACL_OTHER) ||
++         (meta_acl_val->a_tag == ACL_MASK))
++       {
++         meta_acl_val->a_id = *e_id;
++       }
++
++     if (meta_acl_val->a_perm_any == true)
++       {
++        meta_acl_val->a_perm = e_perm;
++       }
++     
++     if ((e_tag != meta_acl_val->a_tag) || (*e_id != meta_acl_val->a_id) || e_perm != meta_acl_val->a_perm)
++       {
++        ret = acl_get_entry(acl, ACL_NEXT_ENTRY, &ent);
++        continue;
++       }
++
++      acl_free(acl);
++      return true;
++    }
++
++  acl_free(acl);
++  return (false);
++}
++#endif
+ 
+ boolean
+ pred_amin (const char *pathname, struct stat *stat_buf, struct predicate *pred_ptr)
+Common subdirectories: /tmp/findut/findutils/find/testsuite and ./testsuite
+diff -uP /tmp/findut/findutils/find/tree.c ./tree.c
+--- /tmp/findut/findutils/find/tree.c	2009-09-29 16:48:02.000000000 +0200
++++ ./tree.c	2009-09-29 16:55:45.000000000 +0200
+@@ -937,6 +937,7 @@
+ };
+ static struct pred_cost_lookup costlookup[] =
+   {
++    { pred_acl       ,  NeedsNothing         },
+     { pred_amin      ,  NeedsStatInfo        },
+     { pred_and       ,  NeedsNothing,        },
+     { pred_anewer    ,  NeedsStatInfo,       },
+diff -uP /tmp/findut/findutils/find/util.c ./util.c
+--- /tmp/findut/findutils/find/util.c	2009-09-29 16:48:02.000000000 +0200
++++ ./util.c	2009-09-29 16:55:45.000000000 +0200
+@@ -37,6 +37,13 @@
+ #include "verify.h"
+ #include "openat.h"
+ 
++
++#ifdef HAVE_LIBACL
++#include <sys/acl.h>
++#include <pwd.h>
++#include <grp.h>
++#endif
++
+ #if ENABLE_NLS
+ # include <libintl.h>
+ # define _(Text) gettext (Text)
+@@ -1077,3 +1084,274 @@
+   report_file_err(0, errno, name);
+ }
+ 
++#ifdef HAVE_LIBACL
++
++#define SKIP_WS(x) ({ \
++    while (*(x)==' ' || *(x)=='\t' || *(x)=='\n' || *(x)=='\r') \
++        (x)++; \
++    })
++
++static int
++skip_tag_name (const char **text_p, const char *token)
++{
++  size_t len = strlen (token);
++  const char *text = *text_p;
++
++  SKIP_WS (text);
++  if (strncmp (text, token, len) == 0)
++    {
++      text += len;
++      goto delimiter;
++    }
++  if (*text == *token)
++    {
++      text++;
++      goto delimiter;
++    }
++  return 0;
++
++delimiter:
++  SKIP_WS (text);
++  if (*text == ':')
++    {
++      *text_p = text + 1;
++      return 1;
++    }
++  if (*text == ',' || *text == '\0')
++    {
++      *text_p = text;
++      return 1;
++    }
++  return 0;
++}
++
++static char *
++get_token (const char **text_p)
++{
++  char *token = NULL, *t;
++  const char *bp, *ep;
++
++  bp = *text_p;
++  SKIP_WS (bp);
++  ep = bp;
++
++  while (*ep != '\0' && *ep != '\r' && *ep != '\n' && *ep != ':'
++     && *ep != ',')
++    ep++;
++  if (ep == bp)
++    goto after_token;
++  token = (char *) malloc (ep - bp + 1);
++  if (token == NULL)
++    goto after_token;
++  memcpy (token, bp, ep - bp);
++
++  /* Trim trailing whitespace */
++  t = token + (ep - bp - 1);
++  while (t >= token && (*t == ' ' || *t == '\t' || *t == '\n' || *t == '\r'))
++    t--;
++  *(t + 1) = '\0';
++
++after_token:
++  if (*ep == ':')
++    ep++;
++  *text_p = ep;
++  return token;
++}
++
++parse_meta_acl (const char **meta_acl_p, struct meta_acl *acl)
++{
++
++  char *str;
++  int meta_perm;
++  int meta_perm_chars;
++  struct passwd *p;
++  struct group *g;
++  uid_t uid;
++  gid_t gid;
++
++  /* check ACL_TYPE */
++  if (skip_tag_name (meta_acl_p, "default"))
++    {
++      acl->a_type = ACL_TYPE_DEFAULT;
++    }
++  else
++    {
++      acl->a_type = ACL_TYPE_ACCESS;
++    }
++
++  switch (**meta_acl_p)
++    {
++
++    case 'u':           /* user */
++      if (skip_tag_name (meta_acl_p, "user"))
++    {
++      str = get_token (meta_acl_p);
++      if (str)
++        {
++          acl->a_tag = ACL_USER;
++          if (strcmp (str, "*") == 0)
++        {
++          acl->a_id_any = 1;
++          acl->a_id = NULL;
++        }
++          else
++        {
++          p = getpwnam (str);
++          if (p == NULL)
++            p = getpwuid ((uid_t) atoi (str));
++          if (p != NULL)
++            {
++              acl->a_id = p->pw_uid;
++            }
++
++          else
++            {
++              free (str);
++              return -1;
++            }
++        }
++        }
++      else
++        {
++          acl->a_tag = ACL_USER_OBJ;
++          acl->a_id = NULL;
++        }
++    }
++      break;
++    case 'g':           /* group */
++      if (skip_tag_name (meta_acl_p, "group"))
++    {
++      str = get_token (meta_acl_p);
++      if (str)
++        {
++          acl->a_tag = ACL_GROUP;
++          if (strcmp (str, "*") == 0)
++        {
++          acl->a_id_any = 1;
++          acl->a_id = NULL;
++        }
++          else
++        {
++          g = getgrnam (str);
++          if (g == NULL)
++            g = getgrgid ((uid_t) atoi (str));
++          if (g != NULL)
++            {
++              acl->a_id = g->gr_gid;
++            }
++          else
++            {
++              free (str);
++              return -1;
++            }
++        }
++        }
++      else
++        {
++          acl->a_tag = ACL_GROUP_OBJ;
++          acl->a_id = NULL;
++        }
++    }
++      break;
++
++    case 'o':           /* other */
++      if (skip_tag_name (meta_acl_p, "other"))
++    {
++      SKIP_WS (*meta_acl_p);
++      if (**meta_acl_p == ':')
++        (*meta_acl_p)++;
++      acl->a_tag = ACL_OTHER;
++      acl->a_id = NULL;
++    }
++      break;
++
++    case 'm':           /* mask */
++      if (skip_tag_name (meta_acl_p, "mask"))
++    {
++      SKIP_WS (*meta_acl_p);
++      if (**meta_acl_p == ':')
++        (*meta_acl_p)++;
++      acl->a_tag = ACL_MASK;
++      acl->a_id = NULL;
++    }
++      break;
++
++    default:
++      return -1;
++    }
++  SKIP_WS (*meta_acl_p);
++
++  meta_perm = 0;
++
++  if (**meta_acl_p == '\0')
++    {
++      acl->a_perm = 0;
++      return 0;
++    }
++
++  if (**meta_acl_p >= '0' && **meta_acl_p <= '7')
++    {
++      while (**meta_acl_p == '0')
++    (*meta_acl_p)++;
++      if (**meta_acl_p >= '1' && **meta_acl_p <= '7')
++    {
++      acl->a_perm = atoi(*meta_acl_p);
++      return 0;
++    }
++      else if (**meta_acl_p == '\0')
++    {
++      acl->a_perm = 0;
++      return 0;
++    }
++      else
++    {
++      return -1;
++    }
++    }
++  else
++    {
++      for (meta_perm_chars = 0; meta_perm_chars < 4;
++       meta_perm_chars++, (*meta_acl_p)++)
++    {
++      switch (**meta_acl_p)
++        {
++        case 'r':       /* read */
++          meta_perm |= ACL_READ;
++          break;
++
++        case 'w':       /* rwite */
++          meta_perm |= ACL_WRITE;
++          break;
++
++        case 'x':       /* execute */
++          meta_perm |= ACL_EXECUTE;
++          break;
++
++        case '-':       /* ignore */
++          break;
++
++        case '*':       /* any */
++          acl->a_perm_any = 1;
++          acl->a_perm = 0;
++          break;
++
++        case '\0':
++          acl->a_perm = meta_perm;
++          return 0;
++
++        default:
++          return -1;
++        }
++    }
++    }
++
++  if (**meta_acl_p == '\0')
++    {
++      acl->a_perm = 0;
++      return 0;
++    }
++
++  return -1;
++
++}
++#endif
