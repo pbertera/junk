@@ -1,0 +1,379 @@
+#!/bin/bash
+##############################################################################
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU Library General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program; if not, write to the Free Software
+#  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+###############################################################################
+
+#
+# log : stampa errori, warning e messaggi.
+# parametri: 	- $1 messaggio
+#		- $2 codice d'errore: 	se -1 stampa come prefisso "ERROR:" e termina lo script con codice d'uscita -1
+#					se 0 stampa il messaggio senza alcun prefisso
+#					se 1 stampa il messaggio con il prefisso "WARNING:"
+#
+#	la stampa dei messaggi avviene sia a video che nei log di sistema.
+#	Nella stampa nei log di sistema il messaggio viene anteceduto dal prefisso "BaTBU" per facilitarne la ricerca 
+#
+#	Es.: ricerca in /var/log/messages di errori generati dallo script
+#
+#		eta:/home/pietro/backup# cat /var/log/messages |grep BaTBU
+#		Sep 17 09:37:57 eta pietro: BaTBU::  Starting backup script...
+#		Sep 17 09:37:57 eta pietro: BaTBU:: ERROR: no args
+#
+
+function log() 
+{
+	PREFIX="BaTBU"
+	if [ $2 ]
+	then
+		case $2 in 
+			-1) 
+				MESSAGE="ERROR:"
+				;;
+			0)
+				MESSAGE=""
+				;;
+			1)
+				MESSAGE="WARNING:"
+				;;
+		esac
+		logger "$PREFIX $MESSAGE $1"
+		echo "$MESSAGE $1"
+		if [ $2 = -1 ]
+		then
+			logger "$PREFIX Exit with status $2"
+			echo "Exit."
+			exit
+		fi
+	else
+		logger "$PREFIX $1"
+	fi
+}
+
+#start
+#stampa messaggio di start
+log "Starting backup script..." 0
+
+#controlla se ci sono parametri tramite la variabile speciale $#
+#se non ci sono stampa un messaggio d'errore e termina
+if [ $# = 0 ]; then
+	log "no args" -1
+fi
+
+#mette in TEMP le opzioni da linea di comando
+TEMP=`getopt -o hvw::d:N:m:f:s: -- "$@"`
+
+#se l'operazione precedente non è andata a buon fine stampa l'errore e termina
+if [ $? != 0 ]; then
+	log "Parameters parsing error" -1
+fi
+#mette nei parametri posizionali $TEMP
+eval set -- $TEMP
+while [ true ] 
+do
+	#valuta il primo parametro e a seconda se è ammesso un secondo parametro imposta la relativa variabile
+	#tramite il comando shift sposta indietro i parametri posizionali
+	case $1 in
+		-d) DESTINATION_DIR="$2"
+			shift 2
+			;;
+		-N) BACKUP_NAME="$2"
+			shift 2
+			;;
+		-m) case $2 in
+			[0-9]*) BACKUP_NUMBER="$2"
+				if [ $BACKUP_NUMBER -lt 2 ]; then
+					log "max backups < 2" -1
+				fi
+				shift 2;;
+			*) 
+				log "max backups incorrect" -1 
+				;;
+			esac
+			;;
+		-f) EXCLUDE_FILE="$2"
+			shift 2
+			;;
+		-w)
+			NO_MOUNT="true"
+			shift 2 
+			;;
+		#l'opzione per i backup remoti imposta SSH_USER e SSH_HOST: l'opzione -s deve essere  seguita da un parametro nella forma
+		# user@host tramite cut viene diviso questo parametro
+		-s) SSH_USER=`echo $2 | cut -d @ -f 1`
+			if [ -z $SSH_USER ]
+			then
+				log "ssh syntax incorrect: no user" -1
+			fi
+			SSH_HOST=`echo $2 | cut -d @ -f 2`
+			if [ -z $SSH_HOST ]
+			then
+				log "ssh syntax incorrect no host" -1
+			fi
+			SSH_ENABLE="true"
+			shift 2
+			;;
+		-v)
+			VERBOSE="on"
+			shift
+			;;
+		--) shift; break;;
+		-h) echo "
+Utilizzo: $0 device mount_point sourcedir [-d destination_dir]
+	[-N backup_name] [-m max_backups] [-f eclude_file] [-s utente@host] [-w] [-v]
+Opzioni:
+ -d destination_dir	La directory in cui salvare il backup
+ -N backup_name		Il nome da assegnare al backup
+ -m max_backups		Il numero massimo di backup
+ -f exclude_file	exclude_file deve esere un file contenete un elenco di file da escludere dal backup
+ -s utente@host		indica a BaTBU di prelevare i dati da un host remoto facendo il login come 'utente'
+ -w			forza BaTBU a non montare in ro il file system, (sconsigliato)
+ -v			elenca i valori assegnati tramite le opzioni
+	"
+	exit;;
+		*) 
+			log "bad options, type $0 -h for help" -1
+			;;
+	esac
+done
+
+#controlla che ci siano almeno 3 parametri
+if [ $# != 3 ]
+then
+	log "Invalid paramters number" -1
+fi
+
+#il primo parametro e' il dispositovo da montare
+MOUNT_DEVICE=$1
+#il secondo è il punto di mount
+MOUNT_POINT_RW=$2
+#il terzo parametro è la directory sorgente
+SOURCE_DIR=$3
+
+if [ "$VERBOSE" = "on" ]
+then
+	if [ -n "$MOUNT_DEVICE" ]; then
+		log "device: $MOUNT_DEVICE" 0
+	fi
+	if [ -n "$MOUNT_POINT_RW" ]; then
+		log "mountpoint: $MOUNT_POINT_RW" 0
+	fi
+	if [ -n "$SOUCE_DIR" ]; then
+		log "source dir: $SOURCE_DIR" 0
+	fi
+	if [ -n "$DESTINATION_DIR" ]; then
+		log "destination dir: $DESTINATION_DIR" 0
+	fi
+	if [ -n "$BACKUP_NAME" ]; then
+		log "backup name: $BACKUP_NAME" 0
+	fi
+	if [ -n "$BACKUP_NUMBER" ]; then
+		log "max number of backups: $BACKUP_NUMBER" 0
+	fi
+	if [ -n "$EXCLUDE_FILE" ]; then
+		log "exclude file: $EXCLUDE_FILE" 0
+	fi
+	if [ -n "$NO_MOUNT" ]; then
+		log "no mount in ro: $NO_MOUNT" 0
+	fi
+	if [ -n "$SSH_ENABLE" ]; then
+		log "ssh enable: $SSH_ENABLE" 0
+		log "ssh user: $SSH_USER" 0
+		log "ssh host: $SSH_HOST" 0
+	fi
+fi
+
+#verifica che l'utente che eseque lo script e' root tramite il comando id -u
+#altrimenti notifica l'errore
+if [ `id -u` != 0 ] 
+then
+	log "Must be root user" -1
+fi
+
+#controlla che $MOUNT_DEVICE sia un dispositivo a blocchi (un disco)
+if [ ! -b $MOUNT_DEVICE ]
+then
+	log "$MOUNT_DEVICE is not a valid block device" -1
+fi
+
+#se $MOUNT_POINT_RW  non e' una directory
+if [ ! -d $MOUNT_POINT_RW ]
+then
+	if [ -e $MOUNT_POINT_RW ]
+	then
+		#Se $MOUNT_POINT_RW esiste genera un errore grave
+		log "$MOUNT_POINT_RW is not a directory" -1
+	fi
+		#altrimenti genera un warning e crea $MOUNT_POINT_RW 
+		log "$MOUNT_POINT_RW not exist, making..." 1
+	mkdir -p -m 755 $MOUNT_POINT_RW
+fi
+
+#se $NO_MOUNT vuota non montare
+if [ -z $NO_MOUNT ]
+then
+	log "mounting $MOUNT_DEVICE on $MOUNT_POINT_RW" 0
+	#monta
+	mount -o remount,rw $MOUNT_DEVICE $MOUNT_POINT_RW
+	#test su valore di ritorno
+	if (( $? ))
+	then
+		log "can't mount $MOUNT_POINT_RW in rw" -1
+	fi
+fi
+
+#controlla se $MOUNT_DEVICE Ã montato in $MOUNT_POINT_RW
+if [ -n "$NO_MOUNT" ]
+then
+	MOUNT_POINT_RW_TEST=`mount |grep $MOUNT_DEVICE |cut -d \  -f 3`
+	if [ "$MOUNT_POINT_RW" != "$MOUNT_POINT_RW_TEST" ]
+	then
+		log "$MOUNT_DEVICE is not mounted on $MOUNT_POINT_DEVICE" -1
+	fi
+	RW_TEST=`mount |grep $MOUNT_DEVICE | cut -d \  -f6 |cut -d \( -f2 |cut -d \) -f 1`
+	if [ "$RW_TEST" != "rw" ]
+	then
+		log "$MOUNT_DEVICE is not mounted in rw mode" -1
+	fi
+fi
+
+#controlla che $SOURCE_DIR sia una directory
+#if [ ! -d $SOURCE_DIR ]
+#then
+#	if [ -z $SSH_ENABLE ]
+#	then
+#		log "$SOURCE_DIR not is a directory" -1
+#	fi
+#fi
+
+#controlla che non sia abilitato ssh
+if [ ! $SSH_ENABLE ]
+then
+	#controlla che la $SOURCE_DIR esista e sia una directory
+	if [ ! -d $SOURCE_DIR ]
+	then
+		log "$SOURCE_DIR not is a directory" -1
+	fi
+fi
+
+#se non è stato impostato un nome di backup dai il nome di default "BACKUP"
+if [ -z "$BACKUP_NAME" ]
+then
+	BACKUP_NAME=BACKUP
+	log "not -N option specified, assuming \"BACKUP\" name" 1
+fi
+
+# se $DESTINATION_DIR non e' una directory
+if [ ! -d $MOUNT_POINT_RW/$DESTINATION_DIR/ ]
+then
+	#se $DESTINATION_DIR esiste
+	if [ -e $MOUNT_POINT_RW/$DESTINATION_DIR/ ]
+	then
+		#genera un errore fatale
+		log "$MOUNT_POINT_RW/$DESTINATION_DIR is not a directory" -1
+	fi
+		#altrimenti la crea
+		log "$MOUNT_POINT_RW/$DESTINATION_DIR not exist, making..." 1
+	mkdir -p -m 755 $MOUNT_POINT_RW/$DESTINATION_DIR
+fi
+
+#se non è impostato il massimo numero di backup utilizza 5 come default
+if [ -z "$BACKUP_NUMBER" ]
+then
+	BACKUP_NUMBER=5
+	log "not -m option specified, assuming 5 for maximum backup" 1
+fi
+
+#elimina il backup piu' vercchio
+if [ -d $MOUNT_POINT_RW/$DESTINATION_DIR/$BACKUP_NAME.$(($BACKUP_NUMBER-1)) ]
+then
+	log "moving $MOUNT_POINT_RW/$DESTINATION_DIR/$BACKUP_NAME.$((BACKUP_NUMBER-1)) to \
+		$MOUNT_POINT_RW/$DESTINATION_DIR/$BACKUP_NAME.$((BACKUP_NUMBER-1)).delete" 0
+	
+	mv $MOUNT_POINT_RW/$DESTINATION_DIR/$BACKUP_NAME.$(($BACKUP_NUMBER-1)) \
+		$MOUNT_POINT_RW/$DESTINATION_DIR/$BACKUP_NAME.delete
+		
+	log "deleting $MOUNT_POINT_RW/$DESTINATION_DIR/$BACKUP_NAME.delete" 0
+
+	rm -rf $MOUNT_POINT_RW/$DESTINATION_DIR/$BACKUP_NAME.delete &
+fi
+
+#shifto i backup da 2 in poi di una posizione
+for i in `seq 2 $BACKUP_NUMBER |sort -r`
+do
+	#echo $i
+	#if [ $i -eq $BACKUP_NUMBER ]
+	#then
+	#	break
+	#echo "pipp"	
+	#fi
+	iminus=$(($i-1))
+	if [ -d $MOUNT_POINT_RW/$DESTINATION_DIR/$BACKUP_NAME.$iminus ]
+	then
+		log "rotating $MOUNT_POINT_RW/$DESTINATION_DIR/$BACKUP_NAME.$iminus to \
+		$MOUNT_POINT_RW/$DESTINATION_DIR/$BACKUP_NAME.$i" 0
+		mv $MOUNT_POINT_RW/$DESTINATION_DIR/$BACKUP_NAME.$iminus $MOUNT_POINT_RW/$DESTINATION_DIR/$BACKUP_NAME.$i
+	fi
+done
+
+#creo degli hard link ricorsivamente al backup piu' recente in $MOUNT_POINT_RW/$DESTINATION_DIR/$BACKUP_NAME.1 
+if [ -d $MOUNT_POINT_RW/$DESTINATION_DIR/$BACKUP_NAME.0 ]
+then
+	log "copying $MOUNT_POINT_RW/$DESTINATION_DIR/$BACKUP_NAME.0 to \
+	$MOUNT_POINT_RW/$DESTINATION_DIR/$BACKUP_NAME."0
+	cp -al $MOUNT_POINT_RW/$DESTINATION_DIR/$BACKUP_NAME.0 $MOUNT_POINT_RW/$DESTINATION_DIR/$BACKUP_NAME.1
+fi
+
+#tengo conto dei file da escludere
+if [ ! -z $EXCLUDE_FILE ]
+then
+	#se sono impostati dei file da escludere crea l'opzione per rsync
+	if [ -f $EXCLUDE_FILE ]
+	then
+		EXCLUDE_LINE="--exclude-from=\"$EXCLUDE_FILE\""
+	else
+		log "$EXCLUDE_FILE is not a valid file" 1
+	fi
+fi
+
+#se ssh e' abilitato crea l'opzione da passare come parametro a rsync
+if [ $SSH_ENABLE ]
+then
+	SSH_LINE="-e ssh $SSH_USER@$SSH_HOST:"
+fi
+
+log "synking $SSH_LINE$SOURCE_DIR/ to $MOUNT_POINT_RW/$DESTINATION_DIR/$BACKUP_NAME.0 excluding $EXCLUDE_LINE content" 0
+
+#sincronizza $MOUNT_POINT_RW/$DESTINATION_DIR/$BACKUP_NAME.0 con la sorgente
+#copiando solo le differenze
+
+rsync -va --delete-excluded $EXCLUDE_LINE $SSH_LINE$SOURCE_DIR/ $MOUNT_POINT_RW/$DESTINATION_DIR/$BACKUP_NAME.0
+
+#imposta la data di modifica alla data corrente
+touch $MOUNT_POINT_RW/$DESTINATION_DIR/$BACKUP_NAME.0
+
+wait
+
+#se non è specificato rimonta in ro
+if [ -z $NO_MOUNT ]
+then
+	log "mounting ro $MOUNT_DEVICE to $MOUNT_POINT_RW" 0
+	mount -o remount,ro $MOUNT_DEVICE $MOUNT_POINT_RW
+	if (( $? ))
+	then
+		log "Error when mounting ro $MOUNT_POINT_RW" -1
+	fi
+fi
+
+log "Backup done." 0
