@@ -1,0 +1,1 @@
+<p>To enter a new option input a name inside <b>"Customer"</b>, then use calendar which appears doing a click on the icons on the right <b>Start Date</b> and <b>End Date</b> to select the dates you want reserve, then click on <b>Reserve</b></p><p>You can see immediatly your reservation in the calendar.</p>

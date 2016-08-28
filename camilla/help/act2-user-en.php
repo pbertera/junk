@@ -1,0 +1,1 @@
+<p>You can see: <br>Start/End Date</b>: Start/End date of the reservation;<br><b>Creation Date</b>: Date and hour in which the agency made the reservation;<br><b>Expire Date</b>: Date and hour in which the reservation will expire if it is not confirmed;<br><b>House</b>: House reserved.</p>

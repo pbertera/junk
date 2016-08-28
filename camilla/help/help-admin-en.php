@@ -1,0 +1,3 @@
+<p>The calendar shows:<br>
+A segment under every reserved days from agencies (different color for different reservation), with a border <b><font color="#ff0000">red</font></b> for confirmed reservations or <b><font color="#00ff00">green</font></b> for those ones will expire after seven days if they were not confirmed.<br><b>CLICK on it to see more details of the reservation;</b></p><p>Click on:<br><b>NEW</b>: to input a new reservation;<br><b>Calendar Manager</b>: to change colors of the seasons, create or delete them;<br><b>Option Manager</b>: to see expire-reservations-list and delete them.</p><br>
+<p>Click on <b>Logout</b> on the top/right to exit.</p>

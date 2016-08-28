@@ -1,0 +1,23 @@
+Author: Bertera Pietro
+Contact: pietro@bertera.it
+Copyright (C) 2005, Bertera Pietro
+License: GPL (see license.txt)
+
+
+--------
+- una istanza indipendente del sitema per ogni casa (user condivisi ???)
+
+- gli utenti possono fare delle opzioni (dalla data -- alla data) per i giorni non prenotati nella opzione uno o + campi testo
+
+- l'admin puo' confermare le opzioni
+
+- le opzioni scadono dopo 7 gg dalla data/ora di creazione
+
+- non deve essere possibile opzionare + di una volta una casa per lo stesso periodo dallo stesso utente
+
+- colarazioni differrenti per periodi differenti
+
+- l'admin deve poter editare le opzioni (anche quelle scadute) per permettere di prenotare dallo stesso utente la stessa casa 
+	nello stesso periodo per due clienti diversi
+
+

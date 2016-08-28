@@ -1,0 +1,1 @@
+<p>Per inserire una nuova opzione devi immettere un nome nel campo <b>Cliente</b>, quindi usare il calendario che appare cliccando sulle icone a destra dei campi <b>Data Inizio</b> e <b>Data Fine</b> per selezionare le date da opzionare, infine CLICK sul bottone <b>Opziona</b></p><p>Puoi vedere immediatamente la tua opzione inserita nel calendario sottostante.</p>
