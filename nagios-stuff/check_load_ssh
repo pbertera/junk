@@ -1,0 +1,70 @@
+#! /bin/sh
+
+# Copyright (C) 2006 Bertera Pietro <pietro@bertera.it>
+
+# This file may be distributed and/or modified under the terms of
+# the GNU General Public License version 2 as published by
+# the Free Software Foundation.
+# This file is distributed without any warranty; without even the implied
+# warranty of merchantability or fitness for a particular purpose.
+
+
+STATE_OK=0
+STATE_WARNING=1
+STATE_CRITICAL=2
+STATE_UNKNOWN=3
+STATE_DEPENDENT=4
+
+OPTIND=1
+
+help(){
+	echo "$0 -H host -u user -w a -c a -o ssh_opts"	
+	echo "Viene contollato il carico a 10 minuti"
+}
+
+if [ $# -lt 4 ]
+then
+	help
+	exit
+fi
+
+while getopts :H:w:c:o:u: opz
+do
+	case $opz in
+		H ) host=$OPTARG ;;
+		u ) user=$OPTARG ;;
+		w ) warning=$OPTARG ;;
+		c ) critical=$OPTARG ;;
+		o ) options=$OPTARGS ;;
+		* ) 	help 
+			exit 3
+			;;
+	esac
+done
+
+load=`ssh $options -l $user $host uptime |  cut -d \  -f 13,14,15`
+res=`echo $load | sed -e 's/ //g'| cut -d , -f2`
+
+t=`echo "$res < $critical" | bc`
+
+if [ "$t" == "1" ]
+then
+	echo "OK Load average is $load"
+	exit $STATE_OK
+fi
+
+t=`echo "$res >= $critical" | bc`
+
+if [ "$t" == "1" ]
+then
+	echo "CRITICAL Load average is $load"
+	exit $STATE_CRITICAL
+fi
+
+t=`echo "$res >= $warning" | bc`
+
+if [ "$t" == "1" ]
+then
+	echo "WARNING Load average is $load"
+	exit $STATE_WARNING
+fi

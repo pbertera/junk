@@ -1,0 +1,103 @@
+#!/usr/bin/python
+# vi:si:et:sw=4:sts=4:ts=4
+# -*- coding: UTF-8 -*-
+# -*- Mode: Python -*-
+#
+# Copyright (C) 2006 Bertera Pietro <pietro@bertera.it>
+
+# This file may be distributed and/or modified under the terms of
+# the GNU General Public License version 2 as published by
+# the Free Software Foundation.
+# This file is distributed without any warranty; without even the implied
+# warranty of merchantability or fitness for a particular purpose.
+#
+
+import sys, os, urllib, getopt
+from sgmllib import SGMLParser
+
+language = "it_IT"
+server = "localhost"
+port = "143"
+namespace = ""
+maildomain = ""
+protocol = "imap/notls"
+realm = ""
+
+class HTMLProcessor(SGMLParser):
+    def reset(self):
+        SGMLParser.reset(self)
+        self.is_title = False
+        self.title = None
+                        
+    def start_title(self, attrs):
+        self.is_title = True
+    
+    def end_title(self):
+        self.is_title = False
+        
+    def handle_data(self, text):
+        if self.is_title:
+            self.title = text
+    
+    def get_title(self):
+        return self.title
+    
+def usage():
+    print sys.argv[0] + "       -u username     username per il login\n\
+                            -p password     password\n\
+                            -a url          url a cui inviare i dati (la ACTION del form di login)\n\
+                            -e expect       titolo della pagina se il login ha successo\n"
+    sys.exit(1)
+
+def main():
+	try:
+	    opts, args = getopt.getopt(sys.argv[1:], "u:p:a:e:h")	
+    except getopt.GetoptError:
+        usage()
+        return 3
+    
+    user = action = password = use_ssl = expect = None
+    
+    for o, a in opts:
+        if o == "-u":
+            user = a
+        elif o == "-p":
+            password = a
+        elif o == "-a":
+            action = a  
+        elif o == '-e':
+            expect = a
+        elif o == '-h':
+            usage()
+            
+    if user == None or password == None or action == None or expect == None:
+        usage()
+        
+    params = urllib.urlencode({     'imapuser':     user, 
+                                    'pass':         password, 
+                                    'language':     language, 
+                                    'server':       server,
+                                    'port':         port, 
+                                    'namespace':    namespace, 
+                                    'maildomain':   maildomain, 
+                                    'protocol':     protocol, 
+                                    'realm':        realm
+                                })
+    
+    
+    f = urllib.urlopen(action, params)
+    parser = HTMLProcessor()
+    parser.feed(f.read())
+    f.close()
+    parser.close()
+    if parser.title.find(expect) != -1:
+        print "OK"
+        sys.exit(0)
+    else:
+        print "Error"
+        sys.exit(2)
+        
+
+if __name__ == "__main__":
+        sys.exit(main())
+    
