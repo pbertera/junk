@@ -1,0 +1,111 @@
+Pygetkey: Tool for reading Windows and Office Product Keys
+----------------------------------------------------------
+
+UTILIZZO:
+---------
+
+pygetkey legge e decifra dal registro i valori dei product key di Windows e Office e li stampa a video
+Opzionalemnte è possibile scrivere le product key in una chiave di registro specificata a linea di comando:
+
+ESEMPI:
+-------
+
+pygetkey.py -c SYSTEM\Test
+
+creerà i valori WINDOWS-KEY e OFFICE-2007-KEY all'interno della chiave HKEY_LOCAL_MACHINE\SYSTEM\Test:
+
+[HKEY_LOCAL_MACHINE\SYSTEM\Test]
+"WINDOWS-KEY"="XQM13-K3M7R-32HRX-XF3Q-GMF63"
+"OFFICE-2007-KEY"="JPBW9-BPY6B-79M9M-RJYJV-6G5B6"
+
+pygetkey.py -r RemotePc
+
+Interroga RemotePc e estrae i product key dal pc remoto
+
+NOTA: 
+-----
+
+i valori vengono creati sotto l'albero di registro HKEY_LOCAL_MACHINE nella chiave specificata dal
+parametro -c e potranno avere i seguenti nomi:
+WINDOWS-KEY: la chiave di windows
+OFFICE-{2000,2007,2003,XP}-KEY: le chiavi di office trovate a seconda della versione
+La chiave specificata dal comando DEVE esistere, in caso contrario verrà ritornato un errore.
+
+CREAZIONE DEI BINARI:
+---------------------
+
+E' possibile creare un eseguibile di pygetkey in modo da non installare python sui pc, per creare i binari occorre
+installare py2exe (http://www.py2exe.org) per l'appropriata versione di Python ed eseguire il seguente comando:
+
+python.exe setup.py py2exe
+
+Qesto creera' una directory dist contente dei file, quelli strettamente necessari all'esecuzione di pygetkey.exe sono:
+
+* pygetkey.exe
+* library.zip
+* python25.dll (il 25 dipende dalla versione di Python installata)
+* MSVCR71.dll
+
+PS: non sono sicuro funzioni correttamente con Office 2000, se fate dei test vi prego di mandare i risultati
+a: pietro@bertera.it
+
+
+Readrreg: Tool per leggere le chiavi di registro su un host remoto
+------------------------------------------------------------------
+C:\dev\getkey>readrreg.py -k "SYSTEM\Test" -r RemotePC
+office-2007-key: XQM13-K3M7R-32HRX-XF3Q-GMF63
+windows-key: JPBW9-BPY6B-79M9M-RJYJV-6G5B6
+
+
+
+
+USAGE:
+------
+
+A python tool for reading and decrypt the Windows and Office Product Key from windows registry.
+Is possible to write cleartext Product keys in a windows registry key specified with a parameter in command line.
+
+EXAMPLES:
+---------
+
+pygetkey -c SYSTEM\Test
+
+create values WINDOWS-KEY and OFFICE-2007-KEY in HKEY_LOCAL_MACHINE\SYSTEM\Test:
+
+[HKEY_LOCAL_MACHINE\SYSTEM\Test]
+"WINDOWS-KEY"="XQM13-K3M7R-32HRX-XF3Q-GMF63"
+"OFFICE-2007-KEY"="JPBW9-BPY6B-79M9M-RJYJV-6G5B6"
+
+Note: The values created by pygetkey can have the name:
+WINDOWS-KEY: Windows Product ID
+OFFICE-{2000,2007,2003,XP}-KEY: Office product ID, depending from Office Version.
+The key specified via -c options MUST exist.
+
+
+pygetkey.py -r RemotePc
+
+Query RemotePc to retreive Product keys
+
+Readrreg: Tool for reading registry keys on a remote machine
+------------------------------------------------------------------
+C:\dev\getkey>readrreg.py -k "SYSTEM\Test" -r RemotePC
+office-2007-key: XQM13-K3M7R-32HRX-XF3Q-GMF63
+windows-key: JPBW9-BPY6B-79M9M-RJYJV-6G5B6
+
+
+BINARY DISTRIBUTION:
+--------------------
+
+Is possible to make a static executable of pygetkey and readrreg with py2exe, you can use the command:
+
+python.exe setup.py py2exe
+
+For any suggestion please contact me: pietro@bertera.it
+
+P.S.:
+I'm not sure it will run clean with Office 2000.
+
+----------------------------------------------
+Author: Bertera Pietro <pietro@bertera.it>
+Web: http://wwww.bertera.it/software/pygetkey/
+----------------------------------------------
