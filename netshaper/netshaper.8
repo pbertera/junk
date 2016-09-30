@@ -1,0 +1,105 @@
+.\" Copyright (c) 2003 Bertera Pietro
+.\"
+.\" This is free documentation; you can redistribute it and/or
+.\" modify it under the terms of the GNU General Public License as
+.\" published by the Free Software Foundation; either version 2 of
+.\" the License, or (at your option) any later version.
+.\"
+.\" The GNU General Public License's references to "object code"
+.\" and "executables" are to be interpreted as the output of any
+.\" document formatting or typesetting system, including
+.\" intermediate and printed output.
+.\"
+.\" This manual is distributed in the hope that it will be useful,
+.\" but WITHOUT ANY WARRANTY; without even the implied warranty of
+.\" MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+.\" GNU General Public License for more details.
+.\"
+.\" You should have received a copy of the GNU General Public
+.\" License along with this manual; if not, write to the Free
+.\" Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+.\"
+.TH NETSHAPER 8 "marzo 2003" "Linux 2.4" "Linux Programmer's Manual"
+.SH NAME
+netshaper \- il tool userspace per controllare il net device netshaper
+.B 
+.SH SYNOPSIS
+.BR "netshaper   \-[s d] host/mask \-[p] protocol \-[i o] iface" 
+.BR "\-[sport dport] port \-[t] timeout Bandwidth"
+
+.SH DESCRIPTION
+Netshaper serve per aggiungere o modificare le regole che impostano l'accodamento 
+dei pacchetti tramite il modulo kernel netshaper_mod.
+
+.PP
+L'argomento obbligatorio è Bandwidth che indica la banda in Bytes/sec che non possono
+superare i pacchetti che soddisfano la regola. Una regola composta solo dalla banda 
+limita tutto il traffico a quella banda.
+Ogni volta che viene aggiunta una regola viene aggiunta una entry in /proc/netshaper/rules
+che rappresenta tutti i dati della regola e i bytes accodati al momento.
+
+.SH OPTIONS AND ARGUMENTS
+Sono riconoscuite le seguenti opzioni:
+.BR netshaper:
+.TP
+.B "\-s"
+Rappresenta l'host sorgente, supporta gi indirizzi IP in forma puntata o i nomi. Supporta
+anche le maschere di rete sia nel formato /24 che 255.255.255.0.
+.TP
+.B "\-d"
+Rappresenta l'host destinazione, supporta gi indirizzi IP in forma puntata o i nomi. Supporta
+anche le maschere di rete sia nel formato /24 che 255.255.255.0.
+.TP
+.B "\-sport"
+Rappresenta la porta sorgente.
+.TP
+.B "\-dport"
+Rappresenta la porta destinazione.
+.TP
+.B "\-p"
+Rappresenta il protocollo, sono supportati TCP e UDP.
+.TP
+.B "\-i"
+Rappresenta l'interfaccia di ingresso dei pacchetti.
+.TP
+.B "\-o"
+Rappresenta l'interfaccia di uscita dei pacchetti.
+.TP
+.B "\-t"
+Rappresenta il tempo massimo di permanenza dei pacchetti nelle code (in millisecondi, al massimo 3000).
+.TP
+.B "Bandwidth"
+Rappresenta il massimo bitrate di ingresso / uscita dei pacchetti che soddisfano la regola.
+Se Bandwidth è 0 viene eliminata la regola.
+
+.PP
+Quando il kernel riceve un pacchetto, questo viene prelevato, netshaper_mod cerca se il 
+pacchetto è conforme a una regola. Se non trova nessuna regola il pacchetto riprende il suo
+viaggio in kernel space. Se netshaper_mod trova una regola che soddisfa il pacchetto, calcola
+un tempo di permanenza a seconda del bandwidth impostato e accoda il pacchetto. Quando il 
+tempo di permanenza è scaduto viene deccodato il pacchetto. Se un pacchetto permane nelle code
+per un tempo maggiore del timeout viene scartato.
+
+.SH EXAMPLES
+
+Limitare i dati provenienti da www.microsoft.com a 1024 Bytes/secondo.
+
+.nf
+# netshaper -s www.microsoft.com 1024
+.fi
+
+Limitare i dati provenineti da una sottorete, entranti da un'interfaccia
+.nf
+# netshaper -s 192.168.2.0/24 -i eth0 12800000
+.fi
+
+Eliminare la prima regola di www.microsoft.com
+.nf
+# netshaper -s www.microsoft.com 0
+.fi
+
+
+.SH AUTHORS
+Bertera Pietro <dr.iggy@iol.it>
+
+
